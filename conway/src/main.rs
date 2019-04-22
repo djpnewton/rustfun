@@ -1,35 +1,61 @@
-use std::fs;
+//use std::path::Path;
+use std::str;
 
 extern crate quicksilver;
+#[macro_use]
+extern crate stdweb;
 
 use quicksilver::{
-    Result,
+    Future, Result,
+    combinators::result,
+    combinators::ok,
+    load_file,
     geom::{Rectangle, Vector},
-    graphics::{Background::Col, Color},
+    graphics::{Background::Col, Color, Font, FontStyle},
     input::{ButtonState, Key},
-    lifecycle::{Event, Settings, State, Window, run},
+    lifecycle::{Asset, Event, Settings, State, Window, run},
 };
 
 const WIN_X: u32 = 800;
 const WIN_Y: u32 = 600;
 
+struct Map {
+    x: usize,
+    y: usize,
+    state: Vec<bool>,
+}
+
 struct Conway {
     run: bool,
     elapsed: f64,
     steps: usize,
-    map_x: usize,
-    map_y: usize,
-    state: Vec<bool>,
+    map: Asset<Map>,
+    //font: Font,
+    //font_style: FontStyle,
 }
 
 impl State for Conway {
     fn new() -> Result<Conway> {
-        let filename = "map.txt";
-        let map = fs::read_to_string(filename)
-            .expect("Something went wrong reading the file");
-        let (map_x, map_y) = find_dimensions(&map);
-        let state = read_state(&map);
-        Ok(Conway {run: true, elapsed: 0., steps: 0, state: state, map_x: map_x, map_y: map_y})
+        /*
+        let font_path = "fonts/Pixeled.ttf";
+        if !Path::new(font_path).exists() {
+            let message = format!("dang, cant find font file! '{}'", font_path);
+            debug_output(&message);
+        }
+        let font = Font::load(font_path).and_then(|font| {
+            result(font);
+        });
+        let font_style = FontStyle::new(32.0, Color::BLACK);
+        */
+        let map = Asset::new(load_file("map.txt")
+            .and_then(|contents| ok(String::from_utf8(contents).expect("The file must be UTF-8")))
+            .and_then(|map_data| {
+                let (x, y) = find_dimensions(&map_data);
+                let state = read_state(&map_data);
+                ok(Map {x: x, y: y, state: state})
+        }));
+
+        Ok(Conway {run: true, elapsed: 0., steps: 0, map: map})
     }
 
     fn event(&mut self, event: &Event, window: &mut Window) -> Result<()> {
@@ -44,7 +70,10 @@ impl State for Conway {
             self.elapsed += window.update_rate();
             // run at 5fps
             while self.elapsed / 200. > self.steps as f64 {
-                evolve_state(&mut self.state, self.map_x, self.map_y);
+                self.map.execute(|map| {
+                    evolve_state(&mut map.state, map.x, map.y);
+                    Ok(())
+                });
                 self.steps += 1;
             }
         }
@@ -52,24 +81,24 @@ impl State for Conway {
     }
 
     fn draw(&mut self, window: &mut Window) -> Result<()> {
-        let cell_width = WIN_X / self.map_x as u32;
-        let cell_height = WIN_Y / self.map_y as u32;
-        let mut cur_x = 0;
-        let mut cur_y = 0;
-
         window.clear(Color::WHITE)?;
-
-        for cell in &self.state {
-            if *cell {
-                window.draw(&Rectangle::new((cur_x, cur_y), (cell_width, cell_height)), Col(Color::BLUE));
+        self.map.execute(|map| {
+            let cell_width = WIN_X / map.x as u32;
+            let cell_height = WIN_Y / map.y as u32;
+            let mut cur_x = 0;
+            let mut cur_y = 0;
+            for cell in &map.state {
+                if *cell {
+                    window.draw(&Rectangle::new((cur_x, cur_y), (cell_width, cell_height)), Col(Color::BLUE));
+                }
+                cur_x += cell_width;
+                if cur_x >= cell_width * map.x as u32 {
+                    cur_x = 0;
+                    cur_y += cell_height;
+                }
             }
-            cur_x += cell_width;
-            if cur_x >= cell_width * self.map_x as u32 {
-                cur_x = 0;
-                cur_y += cell_height;
-            }
-        }
-
+            Ok(())
+        });
         Ok(())
     }
 }
@@ -177,4 +206,16 @@ fn evolve_state(state: &mut Vec<bool>, map_x: usize, map_y: usize) {
     for (i, status) in transitions {
         state[i] = status;
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn debug_output(msg: &str) {
+    js! {
+        console.log(@{msg});
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn debug_output(msg: &str) {
+    println!("{}", msg);
 }
