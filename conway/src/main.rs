@@ -7,17 +7,21 @@ extern crate stdweb;
 
 use quicksilver::{
     Future, Result,
-    combinators::result,
     combinators::ok,
     load_file,
     geom::{Rectangle, Vector},
-    graphics::{Background::Col, Color, Font, FontStyle},
+    graphics::{Background::Col, Color},
     input::{ButtonState, Key},
     lifecycle::{Asset, Event, Settings, State, Window, run},
 };
 
+mod text;
+use crate::{
+    text::{Text, TextRenderer},
+};
+
 const WIN_X: u32 = 800;
-const WIN_Y: u32 = 600;
+const WIN_Y: u32 = 800;
 
 struct Map {
     x: usize,
@@ -30,37 +34,24 @@ struct Conway {
     elapsed: f64,
     steps: usize,
     map: Asset<Map>,
-    //font: Font,
-    //font_style: FontStyle,
+    text_renderer: TextRenderer,
 }
 
 impl State for Conway {
     fn new() -> Result<Conway> {
-        /*
-        let font_path = "fonts/Pixeled.ttf";
-        if !Path::new(font_path).exists() {
-            let message = format!("dang, cant find font file! '{}'", font_path);
-            debug_output(&message);
-        }
-        let font = Font::load(font_path).and_then(|font| {
-            result(font);
-        });
-        let font_style = FontStyle::new(32.0, Color::BLACK);
-        */
-        let map = Asset::new(load_file("map.txt")
-            .and_then(|contents| ok(String::from_utf8(contents).expect("The file must be UTF-8")))
-            .and_then(|map_data| {
-                let (x, y) = find_dimensions(&map_data);
-                let state = read_state(&map_data);
-                ok(Map {x: x, y: y, state: state})
-        }));
-
-        Ok(Conway {run: true, elapsed: 0., steps: 0, map: map})
+        let map = load_map();
+        let text_renderer = TextRenderer::new();
+        Ok(Conway {run: false, elapsed: 0., steps: 0, map: map, text_renderer: text_renderer})
     }
 
-    fn event(&mut self, event: &Event, window: &mut Window) -> Result<()> {
+    fn event(&mut self, event: &Event, _window: &mut Window) -> Result<()> {
         if let Event::Key(Key::Space, ButtonState::Pressed) = event {
             self.run = !self.run;
+        }
+        if let Event::Key(Key::R, ButtonState::Pressed) = event {
+            self.steps = 0;
+            self.elapsed = 0.;
+            self.map = load_map();
         }
         Ok(())
     }
@@ -82,6 +73,7 @@ impl State for Conway {
 
     fn draw(&mut self, window: &mut Window) -> Result<()> {
         window.clear(Color::WHITE)?;
+
         self.map.execute(|map| {
             let cell_width = WIN_X / map.x as u32;
             let cell_height = WIN_Y / map.y as u32;
@@ -99,12 +91,39 @@ impl State for Conway {
             }
             Ok(())
         });
+
+        self.text_renderer.draw(
+            window,
+            (WIN_X as f32 - 75., 20.),
+            &Text::Number(self.steps as i32),
+        )?;
+        self.text_renderer.draw(
+            window,
+            (140., 20.),
+            &Text::Space,
+        )?;
+        self.text_renderer.draw(
+            window,
+            (90., 40.),
+            &Text::R,
+        )?;
+        
         Ok(())
     }
 }
 
 fn main() {
     run::<Conway>("Conway", Vector::new(WIN_X, WIN_Y), Settings::default());
+}
+
+fn load_map() -> Asset<Map> {
+    Asset::new(load_file("map.txt")
+        .and_then(|contents| ok(String::from_utf8(contents).expect("The file must be UTF-8")))
+        .and_then(|map_data| {
+            let (x, y) = find_dimensions(&map_data);
+            let state = read_state(&map_data);
+            ok(Map {x: x, y: y, state: state})
+    }))
 }
 
 fn find_dimensions(map: &str) -> (usize, usize) {
