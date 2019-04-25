@@ -1,1 +1,6 @@
+*~
+*.swp
+*.swo
+
 /conway
+/fractal
