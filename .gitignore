@@ -1,4 +1,6 @@
 *~
 *.swp
+*.swo
 
 conway/target
+fractal/target
