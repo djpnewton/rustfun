@@ -6,5 +6,7 @@ edition = "2018"
 
 [dependencies]
 rand = "*"
+num = "*"
+palette = "*"
 quicksilver = "*"
 stdweb = "*"
