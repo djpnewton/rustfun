@@ -39,6 +39,7 @@ enum Fractal {
     None,
     SierpinskiTriangle { img: Image },
     Mandelbrot { img: Image },
+    Julia { img: Image },
 }
 
 struct FractalRenderer {
@@ -67,6 +68,7 @@ impl State for FractalRenderer {
                 Fractal::None => Fractal::None,
                 Fractal::SierpinskiTriangle { img } => new_sierpinski_triangle(WIN_X, WIN_Y),
                 Fractal::Mandelbrot { img } => new_mandelbrot(WIN_X, WIN_Y),
+                Fractal::Julia { img } => new_julia(WIN_X, WIN_Y),
             }
         }
         if let Event::Key(Key::C, ButtonState::Pressed) = event {
@@ -98,6 +100,9 @@ impl State for FractalRenderer {
                 window.draw(&img.area().with_center((WIN_X/2, WIN_Y/2)), Img(&img));
             }
             Fractal::Mandelbrot { img } => {
+                window.draw(&img.area().with_center((WIN_X/2, WIN_Y/2)), Img(&img));
+            }
+            Fractal::Julia { img } => {
                 window.draw(&img.area().with_center((WIN_X/2, WIN_Y/2)), Img(&img));
             }
         }
@@ -134,7 +139,8 @@ fn main() {
 fn change_fractal(current: &Fractal) -> Fractal {
     match current {
         Fractal::None => new_mandelbrot(WIN_X, WIN_Y),
-        Fractal::Mandelbrot { img } => new_sierpinski_triangle(WIN_X, WIN_Y),
+        Fractal::Mandelbrot { img } => new_julia(WIN_X, WIN_Y),
+        Fractal::Julia { img } => new_sierpinski_triangle(WIN_X, WIN_Y),
         Fractal::SierpinskiTriangle { img } => new_mandelbrot(WIN_X, WIN_Y),
     }
 }
@@ -213,6 +219,51 @@ fn new_mandelbrot(max_x: u32, max_y: u32) -> Fractal {
     }
 }
 
+fn new_julia(max_x: u32, max_y: u32) -> Fractal {
+    let mut rng = rand::thread_rng();
+    let max_iter = rng.gen_range(10, MAX_ITER);
+    // allocate pixel buffer (RGBA - 4 * u8 per pixel)
+    let mut pixels = vec![0 as u8; (4 * max_x * max_y) as usize];
+    // c constant for the julia set
+    let c = Complex::new(0.285, 0.01);
+    // color the pixels
+    for y in 0..max_y {
+        for x in 0..max_x {
+            // convert pixel coord to complex number
+            let z0 = Complex::new(
+                RE_START + (x as f32 / max_x as f32) * (RE_END - RE_START),
+                IM_START + (y as f32 / max_y as f32) * (IM_END - IM_START));
+            // compute iterations
+            let m = calc_julia_point(c, z0, max_iter);
+            // color depends on the num of iterations
+            let hue = m / max_iter as f32 * 360.;
+            let saturation = 1.;
+            let value = if m < max_iter as f32 { 1. } else { 0. };
+            let hsv = Hsv::new(hue, saturation, value);
+            let rgb = Srgb::from_hsv(hsv);
+            // draw pixel
+            let index = 4 * (x + y * max_x) as usize;
+            let bytes = [
+                (rgb.red * 255.) as u8,
+                (rgb.green * 255.) as u8,
+                (rgb.blue * 255.) as u8,
+                255];
+            for i in 0..bytes.len() {
+                pixels[index + i] = bytes[i];
+            }
+        }
+    }
+    match Image::from_raw(pixels.as_slice(), max_y as u32, max_y as u32, PixelFormat::RGBA) {
+        Ok(img) => {
+            Fractal::Julia { img: img }
+        }
+        Err(msg) => {
+            //debug_output(msg),
+            Fractal::None
+        }
+    }
+}
+
 fn complex_abs(c: Complex<f32>) -> f32 {
     (c.re * c.re + c.im * c.im).sqrt()
 }
@@ -225,6 +276,22 @@ fn calc_mandelbrot_point(c: Complex<f32>, max_iter: u8) -> f32 {
         n += 1;
     }
     // dont just return n, 'renormalize the mandelbrot escape'
+    if n == max_iter {
+        max_iter as f32
+    }
+    else {
+        n as f32 + 1. - complex_abs(z).log2().ln()
+    }
+}
+
+fn calc_julia_point(c: Complex<f32>, z0: Complex<f32>, max_iter: u8) -> f32 {
+    let mut z = z0;
+    let mut n = 0;
+    while complex_abs(z) <= 2. && n < max_iter {
+        z = z*z + c;
+        n += 1;
+    }
+    // dont just return n, 'renormalize the julia escape'
     if n == max_iter {
         max_iter as f32
     }
