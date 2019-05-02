@@ -6,6 +6,7 @@ extern crate quicksilver;
 extern crate stdweb;
 
 use std::str;
+use std::time::SystemTime;
 use rand::Rng;
 use num::complex::Complex;
 use palette::{Hsv, Srgb, FromColor};
@@ -25,8 +26,8 @@ use crate::{
     text::{Text, TextRenderer},
 };
 
-const WIN_X: u32 = 800;
-const WIN_Y: u32 = 800;
+const WIN_X: u32 = 400;
+const WIN_Y: u32 = 400;
 
 // mandelbrot consts
 const MAX_ITER: u8 = 80;
@@ -35,24 +36,246 @@ const RE_END: f32 = 1.;
 const IM_START: f32 = -1.5;
 const IM_END: f32 = 1.5;
 
-enum Fractal {
+struct FractalView {
+    re_start: f32,
+    re_end: f32,
+    im_start: f32,
+    im_end: f32,
+}
+
+trait Fractal {
+    fn create_image(&mut self, sz_x: u32, sz_y: u32);
+    fn get_image(&self) -> &Option<Image>;
+}
+
+trait MandelbrotFamily {
+    fn translate_view(&mut self, re_delta: f32, im_delta: f32);
+    fn zoom_view(&mut self, delta: f32);
+}
+
+struct SierpinskiTriangle {
+    img: Option<Image>,
+}
+
+impl Fractal for SierpinskiTriangle {
+    fn create_image(&mut self, sz_x: u32, sz_y: u32) {
+        // allocate pixel buffer (RGBA - 4 * u8 per pixel)
+        let mut pixels = vec![0 as u8; (4 * sz_x * sz_y) as usize];
+        // use bitwise arithmetic fill pixels where: x & y == 0
+        let mut rng = rand::thread_rng();
+        let red: u8 = rng.gen();
+        let green: u8 = rng.gen();
+        let blue: u8 = rng.gen();
+        for y in 0..sz_y {
+            for x in 0..sz_x {
+                if x & y == 0 {
+                    // draw pixel
+                    let index = 4 * (x + y * sz_x) as usize;
+                    let bytes = [red, green, blue, 255];
+                    for i in 0..bytes.len() {
+                        pixels[index + i] = bytes[i];
+                    }
+                }
+            }
+        }
+        match Image::from_raw(pixels.as_slice(), sz_x, sz_y, PixelFormat::RGBA) {
+            Ok(img) => {
+                self.img = Some(img);
+            }
+            Err(_e) => {
+                self.img = None;
+                //debug_output(_e),
+            }
+        }
+    }
+    fn get_image(&self) -> &Option<Image> {
+        &self.img
+    }
+}
+
+impl SierpinskiTriangle {
+    fn new(sz_x: u32, sz_y: u32) -> SierpinskiTriangle {
+        let mut tri = SierpinskiTriangle { img: None };
+        tri.create_image(sz_x, sz_y);
+        tri
+    }
+}
+
+struct Mandelbrot {
+    img: Option<Image>,
+    view: FractalView,
+    max_iter: u8,
+}
+
+impl Fractal for Mandelbrot {
+    fn create_image(&mut self, sz_x: u32, sz_y: u32) {
+        // allocate pixel buffer (RGBA - 4 * u8 per pixel)
+        let mut pixels = vec![0 as u8; (4 * sz_x * sz_y) as usize];
+        // color the pixels
+        for y in 0..sz_y {
+            for x in 0..sz_x {
+                // convert pixel coord to complex number
+                let c = Complex::new(
+                    self.view.re_start + (x as f32 / sz_x as f32) * (self.view.re_end - self.view.re_start),
+                    self.view.im_start + (y as f32 / sz_y as f32) * (self.view.im_end - self.view.im_start));
+                // compute iterations
+                let m = calc_mandelbrot_point(c, self.max_iter);
+                // color depends on the num of iterations
+                let hue = m / self.max_iter as f32 * 360.;
+                let saturation = 1.;
+                let value = if m < self.max_iter as f32 { 1. } else { 0. };
+                let hsv = Hsv::new(hue, saturation, value);
+                let rgb = Srgb::from_hsv(hsv);
+                // draw pixel
+                let index = 4 * (x + y * sz_x) as usize;
+                let bytes = [
+                    (rgb.red * 255.) as u8,
+                    (rgb.green * 255.) as u8,
+                    (rgb.blue * 255.) as u8,
+                    255];
+                for i in 0..bytes.len() {
+                    pixels[index + i] = bytes[i];
+                }
+            }
+        }
+        match Image::from_raw(pixels.as_slice(), sz_x, sz_y, PixelFormat::RGBA) {
+            Ok(img) => {
+                self.img = Some(img);
+            }
+            Err(_e) => {
+                self.img = None;
+                //debug_output(_e),
+            }
+        }
+    }
+    fn get_image(&self) -> &Option<Image> {
+        &self.img
+    }
+}
+
+impl Mandelbrot {
+    fn new(view: FractalView, sz_x: u32, sz_y: u32) -> Mandelbrot {
+        let mut rng = rand::thread_rng();
+        let max_iter: u8 = rng.gen_range(10, MAX_ITER);
+        let mut man = Mandelbrot { view: view, img: None, max_iter: max_iter };
+        man.create_image(sz_x, sz_y);
+        man
+    }
+}
+
+impl MandelbrotFamily for Mandelbrot {
+    fn translate_view(&mut self, re_delta: f32, im_delta: f32) {
+        self.view.re_start += re_delta;
+        self.view.re_end += re_delta;
+        self.view.im_start += im_delta;
+        self.view.im_end += im_delta;
+    }
+    fn zoom_view(&mut self, delta: f32) {
+        self.view.re_start -= delta;
+        self.view.re_end += delta;
+        self.view.im_start -= delta;
+        self.view.im_end += delta;
+    }
+}
+
+struct Julia {
+    img: Option<Image>,
+    view: FractalView,
+    max_iter: u8,
+}
+
+impl Fractal for Julia {
+    fn create_image(&mut self, sz_x: u32, sz_y: u32) {
+        // allocate pixel buffer (RGBA - 4 * u8 per pixel)
+        let mut pixels = vec![0 as u8; (4 * sz_x * sz_y) as usize];
+        // c constant for the julia set
+        let c = Complex::new(0.285, 0.01);
+        // color the pixels
+        for y in 0..sz_y {
+            for x in 0..sz_x {
+                // convert pixel coord to complex number
+                let z0 = Complex::new(
+                    RE_START + (x as f32 / sz_x as f32) * (RE_END - RE_START),
+                    IM_START + (y as f32 / sz_y as f32) * (IM_END - IM_START));
+                // compute iterations
+                let m = calc_julia_point(c, z0, self.max_iter);
+                // color depends on the num of iterations
+                let hue = m / self.max_iter as f32 * 360.;
+                let saturation = 1.;
+                let value = if m < self.max_iter as f32 { 1. } else { 0. };
+                let hsv = Hsv::new(hue, saturation, value);
+                let rgb = Srgb::from_hsv(hsv);
+                // draw pixel
+                let index = 4 * (x + y * sz_x) as usize;
+                let bytes = [
+                    (rgb.red * 255.) as u8,
+                    (rgb.green * 255.) as u8,
+                    (rgb.blue * 255.) as u8,
+                    255];
+                for i in 0..bytes.len() {
+                    pixels[index + i] = bytes[i];
+                }
+            }
+        }
+        match Image::from_raw(pixels.as_slice(), sz_x, sz_y, PixelFormat::RGBA) {
+            Ok(img) => {
+                self.img = Some(img);
+            }
+            Err(_e) => {
+                self.img = None;
+                //debug_output(_e),
+            }
+        }
+    }
+    fn get_image(&self) -> &Option<Image> {
+        &self.img
+    }
+}
+
+impl Julia {
+    fn new(view: FractalView, sz_x: u32, sz_y: u32) -> Julia {
+        let mut rng = rand::thread_rng();
+        let max_iter: u8 = rng.gen_range(10, MAX_ITER);
+        let mut jul = Julia { view: view, img: None, max_iter: max_iter };
+        jul.create_image(sz_x, sz_y);
+        jul
+    }
+}
+
+
+impl MandelbrotFamily for Julia {
+    fn translate_view(&mut self, re_delta: f32, im_delta: f32) {
+        self.view.re_start += re_delta;
+        self.view.re_end += re_delta;
+        self.view.im_start += im_delta;
+        self.view.im_end += im_delta;
+    }
+    fn zoom_view(&mut self, delta: f32) {
+        self.view.re_start -= delta;
+        self.view.re_end += delta;
+        self.view.im_start -= delta;
+        self.view.im_end += delta;
+    }
+}
+
+enum Fractals {
     None,
-    SierpinskiTriangle { img: Image },
-    Mandelbrot { img: Image },
-    Julia { img: Image },
+    SierpinskiTriangle(SierpinskiTriangle), 
+    Mandelbrot(Mandelbrot),
+    Julia(Julia),
 }
 
 struct FractalRenderer {
     run: bool,
     elapsed: f64,
     steps: usize,
-    fractal: Fractal,
+    fractal: Fractals,
     text_renderer: TextRenderer,
 }
 
 impl State for FractalRenderer {
     fn new() -> Result<FractalRenderer> {
-        let fractal = change_fractal(&Fractal::None);
+        let fractal = change_fractal(&Fractals::None);
         let text_renderer = TextRenderer::new();
         Ok(FractalRenderer {run: true, elapsed: 0., steps: 0, fractal: fractal, text_renderer: text_renderer})
     }
@@ -64,17 +287,63 @@ impl State for FractalRenderer {
         if let Event::Key(Key::R, ButtonState::Pressed) = event {
             self.steps = 0;
             self.elapsed = 0.;
+            let view = FractalView { re_start: RE_START, re_end: RE_END, im_start: IM_START, im_end: IM_END };
             self.fractal = match &self.fractal {
-                Fractal::None => Fractal::None,
-                Fractal::SierpinskiTriangle { img } => new_sierpinski_triangle(WIN_X, WIN_Y),
-                Fractal::Mandelbrot { img } => new_mandelbrot(WIN_X, WIN_Y),
-                Fractal::Julia { img } => new_julia(WIN_X, WIN_Y),
+                Fractals::None => Fractals::None,
+                Fractals::SierpinskiTriangle(_tri) => Fractals::SierpinskiTriangle(SierpinskiTriangle::new(WIN_X, WIN_Y)),
+                Fractals::Mandelbrot(_man) => Fractals::Mandelbrot(Mandelbrot::new(view, WIN_X, WIN_Y)),
+                Fractals::Julia(_jul) => Fractals::Julia(Julia::new(view, WIN_X, WIN_Y)),
             }
         }
         if let Event::Key(Key::C, ButtonState::Pressed) = event {
             self.steps = 0;
             self.elapsed = 0.;
             self.fractal = change_fractal(&self.fractal);
+        }
+        let mut translate_x = 0.;
+        let mut translate_y = 0.;
+        let mut delta_zoom = 0.;
+        if let Event::Key(Key::Left, ButtonState::Pressed) = event {
+            translate_x = 0.1;
+        }
+        if let Event::Key(Key::Right, ButtonState::Pressed) = event {
+            translate_x = -0.1;
+        }
+        if let Event::Key(Key::Up, ButtonState::Pressed) = event {
+            translate_y = 0.1;
+        }
+        if let Event::Key(Key::Down, ButtonState::Pressed) = event {
+            translate_y = -0.1;
+        }
+        if let Event::Key(Key::Z, ButtonState::Pressed) = event {
+            delta_zoom = 0.1;
+        }
+        if let Event::Key(Key::X, ButtonState::Pressed) = event {
+            delta_zoom = -0.1;
+        }
+        if translate_x != 0. || translate_y != 0. {
+            match &mut self.fractal {
+                Fractals::None => (),
+                Fractals::SierpinskiTriangle(_tri) => (),
+                Fractals::Mandelbrot(man) => man.translate_view(translate_x, translate_y),
+                Fractals::Julia(jul) => jul.translate_view(translate_x, translate_y),
+            }
+        }
+        if delta_zoom != 0. {
+            match &mut self.fractal {
+                Fractals::None => (),
+                Fractals::SierpinskiTriangle(_tri) => (),
+                Fractals::Mandelbrot(man) => man.zoom_view(delta_zoom),
+                Fractals::Julia(jul) => jul.zoom_view(delta_zoom),
+            }
+        }
+        if translate_x != 0. || translate_y != 0. || delta_zoom != 0. {
+            match &mut self.fractal {
+                Fractals::None => (),
+                Fractals::SierpinskiTriangle(_tri) => (),
+                Fractals::Mandelbrot(man) => man.create_image(WIN_X, WIN_Y),
+                Fractals::Julia(jul) => jul.create_image(WIN_X, WIN_Y),
+            }
         }
         Ok(())
     }
@@ -94,18 +363,16 @@ impl State for FractalRenderer {
     fn draw(&mut self, window: &mut Window) -> Result<()> {
         window.clear(Color::WHITE)?;
 
-        match &self.fractal {
-            Fractal::None => (),
-            Fractal::SierpinskiTriangle { img } => {
-                window.draw(&img.area().with_center((WIN_X/2, WIN_Y/2)), Img(&img));
-            }
-            Fractal::Mandelbrot { img } => {
-                window.draw(&img.area().with_center((WIN_X/2, WIN_Y/2)), Img(&img));
-            }
-            Fractal::Julia { img } => {
-                window.draw(&img.area().with_center((WIN_X/2, WIN_Y/2)), Img(&img));
-            }
-        }
+        let img = match &mut self.fractal {
+            Fractals::None => &None,
+            Fractals::SierpinskiTriangle(tri) => &tri.img,
+            Fractals::Mandelbrot(man) => &man.img,
+            Fractals::Julia(jul) => &jul.img,
+        };
+        match img {
+            Some(img) => window.draw(&img.area().with_center((WIN_X/2, WIN_Y/2)), Img(&img)),
+            None => (),
+        };
 
         self.text_renderer.draw(
             window,
@@ -119,7 +386,7 @@ impl State for FractalRenderer {
         )?;
         self.text_renderer.draw(
             window,
-            (90., 40.),
+            (110., 40.),
             &Text::R,
         )?;
         self.text_renderer.draw(
@@ -136,132 +403,22 @@ fn main() {
     run::<FractalRenderer>("FractalRenderer", Vector::new(WIN_X, WIN_Y), Settings::default());
 }
 
-fn change_fractal(current: &Fractal) -> Fractal {
-    match current {
-        Fractal::None => new_mandelbrot(WIN_X, WIN_Y),
-        Fractal::Mandelbrot { img } => new_julia(WIN_X, WIN_Y),
-        Fractal::Julia { img } => new_sierpinski_triangle(WIN_X, WIN_Y),
-        Fractal::SierpinskiTriangle { img } => new_mandelbrot(WIN_X, WIN_Y),
-    }
-}
-
-fn new_sierpinski_triangle(max_x: u32, max_y: u32) -> Fractal {
-    // allocate pixel buffer (RGBA - 4 * u8 per pixel)
-    let mut pixels = vec![0 as u8; (4 * max_x * max_y) as usize];
-    // use bitwise arithmetic fill pixels where: x & y == 0
-    let mut rng = rand::thread_rng();
-    let red: u8 = rng.gen();
-    let green: u8 = rng.gen();
-    let blue: u8 = rng.gen();
-    for y in 0..max_y {
-        for x in 0..max_x {
-            if x & y == 0 {
-                // draw pixel
-                let index = 4 * (x + y * max_x) as usize;
-                let bytes = [red, green, blue, 255];
-                for i in 0..bytes.len() {
-                    pixels[index + i] = bytes[i];
-                }
-            }
+fn change_fractal(current: &Fractals) -> Fractals {
+    let now = SystemTime::now();
+    let view = FractalView { re_start: RE_START, re_end: RE_END, im_start: IM_START, im_end: IM_END };
+    let fractal = match current {
+        Fractals::None => Fractals::Mandelbrot(Mandelbrot::new(view, WIN_X, WIN_Y)),
+        Fractals::Mandelbrot(_man) => Fractals::Julia(Julia::new(view, WIN_X, WIN_Y)),
+        Fractals::Julia(_jul)  => Fractals::SierpinskiTriangle(SierpinskiTriangle::new(WIN_X, WIN_Y)),
+        Fractals::SierpinskiTriangle(_tri) => Fractals::Mandelbrot(Mandelbrot::new(view, WIN_X, WIN_Y)),
+    };
+    match now.elapsed() {
+        Ok(elapsed) => {
+            debug_output(&format!("{}ms", elapsed.as_millis()));
         }
-    }
-    match Image::from_raw(pixels.as_slice(), max_y as u32, max_y as u32, PixelFormat::RGBA) {
-        Ok(img) => {
-            Fractal::SierpinskiTriangle { img: img }
-        }
-        Err(msg) => {
-            //debug_output(msg),
-            Fractal::None
-        }
-    }
-}
-
-fn new_mandelbrot(max_x: u32, max_y: u32) -> Fractal {
-    let mut rng = rand::thread_rng();
-    let max_iter = rng.gen_range(10, MAX_ITER);
-    // allocate pixel buffer (RGBA - 4 * u8 per pixel)
-    let mut pixels = vec![0 as u8; (4 * max_x * max_y) as usize];
-    // color the pixels
-    for y in 0..max_y {
-        for x in 0..max_x {
-            // convert pixel coord to complex number
-            let c = Complex::new(
-                RE_START + (x as f32 / max_x as f32) * (RE_END - RE_START),
-                IM_START + (y as f32 / max_y as f32) * (IM_END - IM_START));
-            // compute iterations
-            let m = calc_mandelbrot_point(c, max_iter);
-            // color depends on the num of iterations
-            let hue = m / max_iter as f32 * 360.;
-            let saturation = 1.;
-            let value = if m < max_iter as f32 { 1. } else { 0. };
-            let hsv = Hsv::new(hue, saturation, value);
-            let rgb = Srgb::from_hsv(hsv);
-            // draw pixel
-            let index = 4 * (x + y * max_x) as usize;
-            let bytes = [
-                (rgb.red * 255.) as u8,
-                (rgb.green * 255.) as u8,
-                (rgb.blue * 255.) as u8,
-                255];
-            for i in 0..bytes.len() {
-                pixels[index + i] = bytes[i];
-            }
-        }
-    }
-    match Image::from_raw(pixels.as_slice(), max_y as u32, max_y as u32, PixelFormat::RGBA) {
-        Ok(img) => {
-            Fractal::Mandelbrot { img: img }
-        }
-        Err(msg) => {
-            //debug_output(msg),
-            Fractal::None
-        }
-    }
-}
-
-fn new_julia(max_x: u32, max_y: u32) -> Fractal {
-    let mut rng = rand::thread_rng();
-    let max_iter = rng.gen_range(10, MAX_ITER);
-    // allocate pixel buffer (RGBA - 4 * u8 per pixel)
-    let mut pixels = vec![0 as u8; (4 * max_x * max_y) as usize];
-    // c constant for the julia set
-    let c = Complex::new(0.285, 0.01);
-    // color the pixels
-    for y in 0..max_y {
-        for x in 0..max_x {
-            // convert pixel coord to complex number
-            let z0 = Complex::new(
-                RE_START + (x as f32 / max_x as f32) * (RE_END - RE_START),
-                IM_START + (y as f32 / max_y as f32) * (IM_END - IM_START));
-            // compute iterations
-            let m = calc_julia_point(c, z0, max_iter);
-            // color depends on the num of iterations
-            let hue = m / max_iter as f32 * 360.;
-            let saturation = 1.;
-            let value = if m < max_iter as f32 { 1. } else { 0. };
-            let hsv = Hsv::new(hue, saturation, value);
-            let rgb = Srgb::from_hsv(hsv);
-            // draw pixel
-            let index = 4 * (x + y * max_x) as usize;
-            let bytes = [
-                (rgb.red * 255.) as u8,
-                (rgb.green * 255.) as u8,
-                (rgb.blue * 255.) as u8,
-                255];
-            for i in 0..bytes.len() {
-                pixels[index + i] = bytes[i];
-            }
-        }
-    }
-    match Image::from_raw(pixels.as_slice(), max_y as u32, max_y as u32, PixelFormat::RGBA) {
-        Ok(img) => {
-            Fractal::Julia { img: img }
-        }
-        Err(msg) => {
-            //debug_output(msg),
-            Fractal::None
-        }
-    }
+        Err(_e) => {}
+    };
+    fractal
 }
 
 fn complex_abs(c: Complex<f32>) -> f32 {

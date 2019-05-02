@@ -70,7 +70,7 @@ impl TextRenderer {
             Text::R,
             Asset::new(Font::load(font).and_then(|font| {
                 let style = FontStyle::new(32.0, Color::RED);
-                result(font.render("press 'r' to reset", &style))
+                result(font.render("press 'r' to randomize", &style))
             })),
         );
 
