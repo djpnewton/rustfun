@@ -28,6 +28,7 @@ use crate::{
 
 const WIN_X: u32 = 400;
 const WIN_Y: u32 = 400;
+const PIXEL_AMOUNT_PER_PASS: u32 = WIN_X * WIN_Y / 10;
 
 // mandelbrot consts
 const MAX_ITER: u8 = 80;
@@ -102,6 +103,10 @@ impl SierpinskiTriangle {
 }
 
 struct Mandelbrot {
+    pixels_index: u32,
+    pixels: Option<Vec<u8>>,
+    width: u32,
+    height: u32,
     img: Option<Image>,
     view: FractalView,
     max_iter: u8,
@@ -110,43 +115,10 @@ struct Mandelbrot {
 impl Fractal for Mandelbrot {
     fn create_image(&mut self, sz_x: u32, sz_y: u32) {
         // allocate pixel buffer (RGBA - 4 * u8 per pixel)
-        let mut pixels = vec![0 as u8; (4 * sz_x * sz_y) as usize];
-        // color the pixels
-        for y in 0..sz_y {
-            for x in 0..sz_x {
-                // convert pixel coord to complex number
-                let c = Complex::new(
-                    self.view.re_start + (x as f32 / sz_x as f32) * (self.view.re_end - self.view.re_start),
-                    self.view.im_start + (y as f32 / sz_y as f32) * (self.view.im_end - self.view.im_start));
-                // compute iterations
-                let m = calc_mandelbrot_point(c, self.max_iter);
-                // color depends on the num of iterations
-                let hue = m / self.max_iter as f32 * 360.;
-                let saturation = 1.;
-                let value = if m < self.max_iter as f32 { 1. } else { 0. };
-                let hsv = Hsv::new(hue, saturation, value);
-                let rgb = Srgb::from_hsv(hsv);
-                // draw pixel
-                let index = 4 * (x + y * sz_x) as usize;
-                let bytes = [
-                    (rgb.red * 255.) as u8,
-                    (rgb.green * 255.) as u8,
-                    (rgb.blue * 255.) as u8,
-                    255];
-                for i in 0..bytes.len() {
-                    pixels[index + i] = bytes[i];
-                }
-            }
-        }
-        match Image::from_raw(pixels.as_slice(), sz_x, sz_y, PixelFormat::RGBA) {
-            Ok(img) => {
-                self.img = Some(img);
-            }
-            Err(_e) => {
-                self.img = None;
-                //debug_output(_e),
-            }
-        }
+        self.pixels_index = 0;
+        self.pixels = Some(vec![0 as u8; (4 * sz_x * sz_y) as usize]);
+        self.width = sz_x;
+        self.height = sz_y;
     }
     fn get_image(&self) -> &Option<Image> {
         &self.img
@@ -157,28 +129,94 @@ impl Mandelbrot {
     fn new(view: FractalView, sz_x: u32, sz_y: u32) -> Mandelbrot {
         let mut rng = rand::thread_rng();
         let max_iter: u8 = rng.gen_range(10, MAX_ITER);
-        let mut man = Mandelbrot { view: view, img: None, max_iter: max_iter };
+        let mut man = Mandelbrot { pixels_index: 0, pixels: None, width: 0, height: 0, view: view, img: None, max_iter: max_iter };
         man.create_image(sz_x, sz_y);
         man
+    }
+    fn reset_image(&mut self) {
+        self.pixels_index = 0;
+    }
+    fn update_image(&mut self) {
+        let last = self.pixels_index;
+        let mut count = 0;
+        // color the pixels
+        match &mut self.pixels {
+            Some(pixels) => {
+                for y in 0..self.height {
+                    for x in 0..self.width {
+                        // only do a few pixels at a time
+                        let current = y * self.width + x;
+                        if current <= last {
+                            continue;
+                        }
+                        if count > PIXEL_AMOUNT_PER_PASS {
+                            break;
+                        }
+                        count += 1;
+                        self.pixels_index = current;
+                        // convert pixel coord to complex number
+                        let c = Complex::new(
+                            self.view.re_start + (x as f32 / self.width as f32) * (self.view.re_end - self.view.re_start),
+                            self.view.im_start + (y as f32 / self.height as f32) * (self.view.im_end - self.view.im_start));
+                        // compute iterations
+                        let m = calc_mandelbrot_point(c, self.max_iter);
+                        // color depends on the num of iterations
+                        let hue = m / self.max_iter as f32 * 360.;
+                        let saturation = 1.;
+                        let value = if m < self.max_iter as f32 { 1. } else { 0. };
+                        let hsv = Hsv::new(hue, saturation, value);
+                        let rgb = Srgb::from_hsv(hsv);
+                        // draw pixel
+                        let index = 4 * (x + y * self.width) as usize;
+                        let bytes = [
+                            (rgb.red * 255.) as u8,
+                            (rgb.green * 255.) as u8,
+                            (rgb.blue * 255.) as u8,
+                            255];
+                        for i in 0..bytes.len() {
+                            pixels[index + i] = bytes[i];
+                        }
+                    }
+                }
+                match Image::from_raw(pixels.as_slice(), self.width, self.height, PixelFormat::RGBA) {
+                    Ok(img) => {
+                        self.img = Some(img);
+                    }
+                    Err(_e) => {
+                        self.img = None;
+                        //debug_output(_e),
+                    }
+                }
+            }
+            None => (),
+        }
     }
 }
 
 impl MandelbrotFamily for Mandelbrot {
     fn translate_view(&mut self, re_delta: f32, im_delta: f32) {
-        self.view.re_start += re_delta;
-        self.view.re_end += re_delta;
-        self.view.im_start += im_delta;
-        self.view.im_end += im_delta;
+        let re_diff = (self.view.re_end - self.view.re_start) * re_delta;
+        self.view.re_start += re_diff;
+        self.view.re_end += re_diff;
+        let im_diff = (self.view.im_end - self.view.im_start) * im_delta;
+        self.view.im_start += im_diff;
+        self.view.im_end += im_diff;
     }
     fn zoom_view(&mut self, delta: f32) {
-        self.view.re_start -= delta;
-        self.view.re_end += delta;
-        self.view.im_start -= delta;
-        self.view.im_end += delta;
+        let re_diff = (self.view.re_end - self.view.re_start) * delta;
+        self.view.re_start -= re_diff;
+        self.view.re_end += re_diff;
+        let im_diff = (self.view.im_end - self.view.im_start) * delta;
+        self.view.im_start -= im_diff;
+        self.view.im_end += im_diff;
     }
 }
 
 struct Julia {
+    pixels_index: u32,
+    pixels: Option<Vec<u8>>,
+    width: u32,
+    height: u32,
     img: Option<Image>,
     view: FractalView,
     max_iter: u8,
@@ -187,45 +225,10 @@ struct Julia {
 impl Fractal for Julia {
     fn create_image(&mut self, sz_x: u32, sz_y: u32) {
         // allocate pixel buffer (RGBA - 4 * u8 per pixel)
-        let mut pixels = vec![0 as u8; (4 * sz_x * sz_y) as usize];
-        // c constant for the julia set
-        let c = Complex::new(0.285, 0.01);
-        // color the pixels
-        for y in 0..sz_y {
-            for x in 0..sz_x {
-                // convert pixel coord to complex number
-                let z0 = Complex::new(
-                    RE_START + (x as f32 / sz_x as f32) * (RE_END - RE_START),
-                    IM_START + (y as f32 / sz_y as f32) * (IM_END - IM_START));
-                // compute iterations
-                let m = calc_julia_point(c, z0, self.max_iter);
-                // color depends on the num of iterations
-                let hue = m / self.max_iter as f32 * 360.;
-                let saturation = 1.;
-                let value = if m < self.max_iter as f32 { 1. } else { 0. };
-                let hsv = Hsv::new(hue, saturation, value);
-                let rgb = Srgb::from_hsv(hsv);
-                // draw pixel
-                let index = 4 * (x + y * sz_x) as usize;
-                let bytes = [
-                    (rgb.red * 255.) as u8,
-                    (rgb.green * 255.) as u8,
-                    (rgb.blue * 255.) as u8,
-                    255];
-                for i in 0..bytes.len() {
-                    pixels[index + i] = bytes[i];
-                }
-            }
-        }
-        match Image::from_raw(pixels.as_slice(), sz_x, sz_y, PixelFormat::RGBA) {
-            Ok(img) => {
-                self.img = Some(img);
-            }
-            Err(_e) => {
-                self.img = None;
-                //debug_output(_e),
-            }
-        }
+        self.pixels_index = 0;
+        self.pixels = Some(vec![0 as u8; (4 * sz_x * sz_y) as usize]);
+        self.width = sz_x;
+        self.height = sz_y;
     }
     fn get_image(&self) -> &Option<Image> {
         &self.img
@@ -236,25 +239,89 @@ impl Julia {
     fn new(view: FractalView, sz_x: u32, sz_y: u32) -> Julia {
         let mut rng = rand::thread_rng();
         let max_iter: u8 = rng.gen_range(10, MAX_ITER);
-        let mut jul = Julia { view: view, img: None, max_iter: max_iter };
+        let mut jul = Julia { pixels_index: 0, pixels: None, width: 0, height: 0, view: view, img: None, max_iter: max_iter };
         jul.create_image(sz_x, sz_y);
         jul
+    }
+    fn reset_image(&mut self) {
+        self.pixels_index = 0;
+    }
+    fn update_image(&mut self) {
+        let last = self.pixels_index;
+        let mut count = 0;
+        // c constant for the julia set
+        let c = Complex::new(0.285, 0.01);
+        // color the pixels
+        match &mut self.pixels {
+            Some(pixels) => {
+                for y in 0..self.height {
+                    for x in 0..self.width {
+                        // only do a few pixels at a time
+                        let current = y * self.width + x;
+                        if current <= last {
+                            continue;
+                        }
+                        if count > PIXEL_AMOUNT_PER_PASS {
+                            break;
+                        }
+                        count += 1;
+                        self.pixels_index = current;
+                        // convert pixel coord to complex number
+                        let z0 = Complex::new(
+                            self.view.re_start + (x as f32 / self.width as f32) * (self.view.re_end - self.view.re_start),
+                            self.view.im_start + (y as f32 / self.height as f32) * (self.view.im_end - self.view.im_start));
+                        // compute iterations
+                        let m = calc_julia_point(c, z0, self.max_iter);
+                        // color depends on the num of iterations
+                        let hue = m / self.max_iter as f32 * 360.;
+                        let saturation = 1.;
+                        let value = if m < self.max_iter as f32 { 1. } else { 0. };
+                        let hsv = Hsv::new(hue, saturation, value);
+                        let rgb = Srgb::from_hsv(hsv);
+                        // draw pixel
+                        let index = 4 * (x + y * self.width) as usize;
+                        let bytes = [
+                            (rgb.red * 255.) as u8,
+                            (rgb.green * 255.) as u8,
+                            (rgb.blue * 255.) as u8,
+                            255];
+                        for i in 0..bytes.len() {
+                            pixels[index + i] = bytes[i];
+                        }
+                    }
+                }
+                match Image::from_raw(pixels.as_slice(), self.width, self.height, PixelFormat::RGBA) {
+                    Ok(img) => {
+                        self.img = Some(img);
+                    }
+                    Err(_e) => {
+                        self.img = None;
+                        //debug_output(_e),
+                    }
+                }
+            }
+            None => (),
+        }
     }
 }
 
 
 impl MandelbrotFamily for Julia {
     fn translate_view(&mut self, re_delta: f32, im_delta: f32) {
-        self.view.re_start += re_delta;
-        self.view.re_end += re_delta;
-        self.view.im_start += im_delta;
-        self.view.im_end += im_delta;
+        let re_diff = (self.view.re_end - self.view.re_start) * re_delta;
+        self.view.re_start += re_diff;
+        self.view.re_end += re_diff;
+        let im_diff = (self.view.im_end - self.view.im_start) * im_delta;
+        self.view.im_start += im_diff;
+        self.view.im_end += im_diff;
     }
     fn zoom_view(&mut self, delta: f32) {
-        self.view.re_start -= delta;
-        self.view.re_end += delta;
-        self.view.im_start -= delta;
-        self.view.im_end += delta;
+        let re_diff = (self.view.re_end - self.view.re_start) * delta;
+        self.view.re_start -= re_diff;
+        self.view.re_end += re_diff;
+        let im_diff = (self.view.im_end - self.view.im_start) * delta;
+        self.view.im_start -= im_diff;
+        self.view.im_end += im_diff;
     }
 }
 
@@ -341,8 +408,8 @@ impl State for FractalRenderer {
             match &mut self.fractal {
                 Fractals::None => (),
                 Fractals::SierpinskiTriangle(_tri) => (),
-                Fractals::Mandelbrot(man) => man.create_image(WIN_X, WIN_Y),
-                Fractals::Julia(jul) => jul.create_image(WIN_X, WIN_Y),
+                Fractals::Mandelbrot(man) => man.reset_image(),
+                Fractals::Julia(jul) => jul.reset_image(),
             }
         }
         Ok(())
@@ -356,6 +423,12 @@ impl State for FractalRenderer {
                 //TODO: animation???
                 self.steps += 1;
             }
+        }
+        match &mut self.fractal {
+            Fractals::None => (),
+            Fractals::SierpinskiTriangle(_tri) => (),
+            Fractals::Mandelbrot(man) => man.update_image(),
+            Fractals::Julia(jul) => jul.update_image(),
         }
         Ok(())
     }
