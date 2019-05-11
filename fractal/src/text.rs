@@ -13,6 +13,8 @@ pub enum Text {
     Space,
     R,
     C,
+    Arrow,
+    ZX,
     Number(i32),
     Digit0,
     Digit1,
@@ -79,6 +81,22 @@ impl TextRenderer {
             Asset::new(Font::load(font).and_then(|font| {
                 let style = FontStyle::new(32.0, Color::RED);
                 result(font.render("press 'c' to change fractal", &style))
+            })),
+        );
+
+        renders.insert(
+            Text::Arrow,
+            Asset::new(Font::load(font).and_then(|font| {
+                let style = FontStyle::new(32.0, Color::RED);
+                result(font.render("press 'arrow' to transate fractal", &style))
+            })),
+        );
+
+        renders.insert(
+            Text::ZX,
+            Asset::new(Font::load(font).and_then(|font| {
+                let style = FontStyle::new(32.0, Color::RED);
+                result(font.render("press 'z/x' to zoom fractal", &style))
             })),
         );
 

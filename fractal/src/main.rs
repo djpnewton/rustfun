@@ -446,6 +446,8 @@ impl State for FractalRenderer {
             Some(img) => window.draw(&img.area().with_center((WIN_X/2, WIN_Y/2)), Img(&img)),
             None => (),
         };
+        // fix weird draw order bug (https://github.com/ryanisaacg/quicksilver/issues/434)
+        window.flush();
 
         self.text_renderer.draw(
             window,
@@ -466,6 +468,16 @@ impl State for FractalRenderer {
             window,
             (135., 60.),
             &Text::C,
+        )?;
+        self.text_renderer.draw(
+            window,
+            (170., 80.),
+            &Text::Arrow,
+        )?;
+        self.text_renderer.draw(
+            window,
+            (135., 100.),
+            &Text::ZX,
         )?;
         
         Ok(())
