@@ -305,7 +305,6 @@ impl Julia {
     }
 }
 
-
 impl MandelbrotFamily for Julia {
     fn translate_view(&mut self, re_delta: f32, im_delta: f32) {
         let re_diff = (self.view.re_end - self.view.re_start) * re_delta;
@@ -489,21 +488,13 @@ fn main() {
 }
 
 fn change_fractal(current: &Fractals) -> Fractals {
-    let now = SystemTime::now();
     let view = FractalView { re_start: RE_START, re_end: RE_END, im_start: IM_START, im_end: IM_END };
-    let fractal = match current {
+    match current {
         Fractals::None => Fractals::Mandelbrot(Mandelbrot::new(view, WIN_X, WIN_Y)),
         Fractals::Mandelbrot(_man) => Fractals::Julia(Julia::new(view, WIN_X, WIN_Y)),
         Fractals::Julia(_jul)  => Fractals::SierpinskiTriangle(SierpinskiTriangle::new(WIN_X, WIN_Y)),
         Fractals::SierpinskiTriangle(_tri) => Fractals::Mandelbrot(Mandelbrot::new(view, WIN_X, WIN_Y)),
-    };
-    match now.elapsed() {
-        Ok(elapsed) => {
-            debug_output(&format!("{}ms", elapsed.as_millis()));
-        }
-        Err(_e) => {}
-    };
-    fractal
+    }
 }
 
 fn complex_abs(c: Complex<f32>) -> f32 {
