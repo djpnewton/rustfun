@@ -1,123 +1,102 @@
-use std::ops;
+use std::ops::{Neg, Add, Sub, Mul, Div};
 
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Vec3 {
-    e0: f32,
-    e1: f32,
-    e2: f32,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
 }
 
 impl Vec3 {
-    pub fn new(e0: f32, e1: f32, e2: f32) -> Self {
-        Vec3 { e0, e1, e2 }
+    pub fn new(x: f32, y: f32, z: f32) -> Self {
+        Vec3 { x, y, z }
     }
 
-    pub fn x(&self) -> f32 {
-        self.e0
+    pub fn ones() -> Vec3 {
+        Vec3 { x: 1.0, y: 1.0, z: 1.0, }
     }
-    pub fn y(&self) -> f32 {
-        self.e1
-    }
-    pub fn z(&self) -> f32 {
-        self.e2
-    }
-    pub fn r(&self) -> f32 {
-        self.e0
-    }
-    pub fn g(&self) -> f32 {
-        self.e1
-    }
-    pub fn b(&self) -> f32 {
-        self.e2
+
+    pub fn zeros() -> Vec3 {
+        Vec3 { x: 0.0, y: 0.0, z: 0.0, }
     }
 
     pub fn length(&self) -> f32 {
-        (self.e0 * self.e0 + self.e1 * self.e1 + self.e2 * self.e2).sqrt()
+        (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
     }
     pub fn squared_length(&self) -> f32 {
-        self.e0 * self.e0 + self.e1 * self.e1 + self.e2 * self.e2
+        self.x * self.x + self.y * self.y + self.z * self.z
     }
-    pub fn make_unit_vector(&mut self) {
+    pub fn make_unit_vector(&self) -> Vec3 {
         let k = 1.0 / self.length();
-        self.e0 *= k;
-        self.e1 *= k;
-        self.e2 *= k;
-        ()
+        Vec3 {
+            x: self.x * k,
+            y: self.y * k,
+            z: self.z * k,
+        }
     }
 
     pub fn dot(&self, v: Vec3) -> f32 {
-        self.e0 * v.e0 + self.e1 * v.e1 + self.e2 * v.e2
+        self.x * v.x + self.y * v.y + self.z * v.z
     }
     pub fn cross(&self, v: Vec3) -> Vec3 {
-        Vec3::new(self.e1 * v.e2 - self.e2 * v.e1,
-                  -(self.e0 * v.e2 - self.e2 * v.e0),
-                  self.e0 * v.e1 - self.e1 * v.e0)
-    }
-
-    pub fn unit_vector(&self) -> Vec3 {
-        self / self.length()
+        Vec3 { x: self.y * v.z - self.z * v.y,
+               y: -(self.x * v.z - self.z * v.x),
+               z: self.x * v.y - self.y * v.x}
     }
 }
 
-impl ops::Neg for Vec3 {
+impl Neg for Vec3 {
     type Output = Vec3;
 
     fn neg(self) -> Vec3 {
-        Vec3::new(-self.e0, -self.e1, -self.e2)
+        Vec3::new(-self.x, -self.y, -self.z)
     }
 }
 
-impl ops::Add<Vec3> for Vec3 {
+impl Add for Vec3 {
     type Output = Vec3;
 
     fn add(self, _rhs: Vec3) -> Vec3 {
-        Vec3::new(self.e0 + _rhs.e0, self.e1 + _rhs.e1, self.e2 + _rhs.e2)
+        Vec3::new(self.x + _rhs.x, self.y + _rhs.y, self.z + _rhs.z)
     }
 }
 
-impl ops::Sub<Vec3> for Vec3 {
+impl Sub for Vec3 {
     type Output = Vec3;
 
     fn sub(self, _rhs: Vec3) -> Vec3 {
-        Vec3::new(self.e0 - _rhs.e0, self.e1 - _rhs.e1, self.e2 - _rhs.e2)
+        Vec3::new(self.x - _rhs.x, self.y - _rhs.y, self.z - _rhs.z)
     }
 }
 
-impl ops::Mul<Vec3> for Vec3 {
+impl Mul<Vec3> for Vec3 {
     type Output = Vec3;
 
     fn mul(self, _rhs: Vec3) -> Vec3 {
-        Vec3::new(self.e0 * _rhs.e0, self.e1 * _rhs.e1, self.e2 * _rhs.e2)
+        Vec3::new(self.x * _rhs.x, self.y * _rhs.y, self.z * _rhs.z)
     }
 }
 
-impl ops::Mul<f32> for Vec3 {
+impl Mul<f32> for Vec3 {
     type Output = Vec3;
 
     fn mul(self, _rhs: f32) -> Vec3 {
-        Vec3::new(self.e0 * _rhs, self.e1 * _rhs, self.e2 * _rhs)
+        Vec3::new(self.x * _rhs, self.y * _rhs, self.z * _rhs)
     }
 }
 
-impl ops::Div<Vec3> for Vec3 {
+impl Div<Vec3> for Vec3 {
     type Output = Vec3;
 
     fn div(self, _rhs: Vec3) -> Vec3 {
-        Vec3::new(self.e0 / _rhs.e0, self.e1 / _rhs.e1, self.e2 / _rhs.e2)
+        Vec3::new(self.x / _rhs.x, self.y / _rhs.y, self.z / _rhs.z)
     }
 }
 
-impl ops::Div<f32> for Vec3 {
+impl Div<f32> for Vec3 {
     type Output = Vec3;
 
     fn div(self, _rhs: f32) -> Vec3 {
-        Vec3::new(self.e0 / _rhs, self.e1 / _rhs, self.e2 / _rhs)
-    }
-}
-
-impl ops::Div<f32> for &Vec3 {
-    type Output = Vec3;
-
-    fn div(self, _rhs: f32) -> Vec3 {
-        Vec3::new(self.e0 / _rhs, self.e1 / _rhs, self.e2 / _rhs)
+        Vec3::new(self.x / _rhs, self.y / _rhs, self.z / _rhs)
     }
 }
