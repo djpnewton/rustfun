@@ -15,13 +15,25 @@ use crate::{
     camera::{Camera},
 };
 
-const WIDTH: usize = 640;
-const HEIGHT: usize = 320;
+const WIDTH: usize = 400;
+const HEIGHT: usize = 200;
 const SAMPLES: usize = 100;
 
-fn color(ray: Ray, world: &World) -> Vec3 {
-    if let Some(hit) = world.hit(ray, 0.0, f32::MAX) {
-        return Vec3::new(hit.normal.x + 1.0, hit.normal.y + 1.0, hit.normal.z + 1.0) * 0.5;
+fn random_in_unit_sphere(rng: &mut ThreadRng) -> Vec3 {
+    let mut p = Vec3::zeros();
+    loop {
+        p = Vec3::new(rng.gen::<f32>(), rng.gen::<f32>(), rng.gen::<f32>()) * 2.0 - Vec3::ones();
+        if p.squared_length() < 1.0 {
+            break;
+        }
+    }
+    p
+}
+
+fn color(ray: Ray, world: &World, rng: &mut ThreadRng) -> Vec3 {
+    if let Some(hit) = world.hit(ray, 0.0001, f32::MAX) {
+        let target = hit.p + hit.normal + random_in_unit_sphere(rng);
+        color(Ray::new(hit.p, target - hit.p), world, rng) * 0.5
     } else {
         let unit_direction = ray.direction.make_unit_vector();
         let t = 0.5 * (unit_direction.y + 1.0);
@@ -58,10 +70,12 @@ fn main() {
                 let u = (px as f32 + rng.gen::<f32>()) / WIDTH as f32;
                 let v = (py as f32 + rng.gen::<f32>()) / HEIGHT as f32;
                 let ray = camera.get_ray(u, v);
-                let col_temp = color(ray, &world); 
+                let col_temp = color(ray, &world, &mut rng); 
                 col = col + col_temp; // add all color values together
             }
             col = col / SAMPLES as f32; // get average of color values
+            // "gamma 2"
+            col = Vec3::new(col.x.sqrt(), col.y.sqrt(), col.z.sqrt());
             // convert to u8
             let r = (255.99 * col.x) as u32;
             let g = (255.99 * col.y) as u32;
