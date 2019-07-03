@@ -43,6 +43,10 @@ impl Vec3 {
                y: -(self.x * v.z - self.z * v.x),
                z: self.x * v.y - self.y * v.x}
     }
+
+    pub fn reflect(&self, n: Vec3) -> Vec3 {
+        *self - n * 2.0 * self.dot(n)
+    }
 }
 
 impl Neg for Vec3 {

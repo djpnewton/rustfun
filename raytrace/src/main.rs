@@ -8,32 +8,32 @@ mod vec3;
 mod ray;
 mod hitable;
 mod camera;
+mod material;
 use crate::{
     vec3::{Vec3},
     ray::{Ray},
     hitable::{Sphere, World},
     camera::{Camera},
+    material::{Material},
 };
 
 const WIDTH: usize = 400;
 const HEIGHT: usize = 200;
 const SAMPLES: usize = 100;
+const MAX_DEPTH: usize = 50;
 
-fn random_in_unit_sphere(rng: &mut ThreadRng) -> Vec3 {
-    let mut p = Vec3::zeros();
-    loop {
-        p = Vec3::new(rng.gen::<f32>(), rng.gen::<f32>(), rng.gen::<f32>()) * 2.0 - Vec3::ones();
-        if p.squared_length() < 1.0 {
-            break;
-        }
-    }
-    p
-}
-
-fn color(ray: Ray, world: &World, rng: &mut ThreadRng) -> Vec3 {
+fn color(ray: Ray, world: &World, depth: usize, rng: &mut ThreadRng) -> Vec3 {
     if let Some(hit) = world.hit(ray, 0.0001, f32::MAX) {
-        let target = hit.p + hit.normal + random_in_unit_sphere(rng);
-        color(Ray::new(hit.p, target - hit.p), world, rng) * 0.5
+        if depth < MAX_DEPTH {
+            if let Some(scatter) = hit.material.scatter(ray, hit, rng) {
+                color(scatter.ray, world, depth + 1, rng) * scatter.attenuation
+            } else {
+                Vec3::zeros()
+            }
+        }
+        else {
+            Vec3::zeros()
+        }
     } else {
         let unit_direction = ray.direction.make_unit_vector();
         let t = 0.5 * (unit_direction.y + 1.0);
@@ -53,8 +53,10 @@ fn main() {
 
     let camera = Camera::new();
     let world = World::new(vec![
-        Sphere::new(Vec3::new(0.0, 0.0, -1.0), 0.5),
-        Sphere::new(Vec3::new(0.0, -100.5, -1.0), 100.0),
+        Sphere::new(Vec3::new(0.0, 0.0, -1.0), 0.5, Material::lambertian(Vec3::new(0.8, 0.3, 0.3))),
+        Sphere::new(Vec3::new(0.0, -100.5, -1.0), 100.0, Material::lambertian(Vec3::new(0.8, 0.8, 0.0))),
+        Sphere::new(Vec3::new(1.0, 0.0, -1.0), 0.5, Material::metal(Vec3::new(0.8, 0.6, 0.2), 0.8)),
+        Sphere::new(Vec3::new(-1.0, 0.0, -1.0), 0.5, Material::metal(Vec3::new(0.8, 0.8, 0.8), 0.1)),
     ]);
     let mut rng = rand::thread_rng();
     while window.is_open() && !window.is_key_down(Key::Escape) {
@@ -70,7 +72,7 @@ fn main() {
                 let u = (px as f32 + rng.gen::<f32>()) / WIDTH as f32;
                 let v = (py as f32 + rng.gen::<f32>()) / HEIGHT as f32;
                 let ray = camera.get_ray(u, v);
-                let col_temp = color(ray, &world, &mut rng); 
+                let col_temp = color(ray, &world, 0, &mut rng); 
                 col = col + col_temp; // add all color values together
             }
             col = col / SAMPLES as f32; // get average of color values

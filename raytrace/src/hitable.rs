@@ -1,6 +1,7 @@
 use crate::{
     vec3::{Vec3},
     ray::{Ray},
+    material::{Material},
 };
 
 #[derive(Copy, Clone)]
@@ -8,17 +9,19 @@ pub struct HitRecord {
     pub t: f32,
     pub p: Vec3,
     pub normal: Vec3,
+    pub material: Material,
 }
 
 #[derive(Copy, Clone)]
 pub struct Sphere {
     pub center: Vec3,
     pub radius: f32,
+    pub material: Material,
 }
 
 impl Sphere {
-    pub fn new(center: Vec3, radius: f32) -> Sphere {
-        Sphere { center, radius }
+    pub fn new(center: Vec3, radius: f32, material: Material) -> Sphere {
+        Sphere { center, radius, material }
     }
 
     pub fn hit(&self, ray: Ray, t_min: f32, t_max: f32) -> Option<HitRecord> {
@@ -32,7 +35,12 @@ impl Sphere {
             let temp = (-b - (b * b - a * c).sqrt()) / a;
             if temp  < t_max && temp > t_min {
                 let hit_point = ray.point_at_parameter(temp);
-                return Some(HitRecord { t: temp, p: hit_point, normal: (hit_point - self.center) / self.radius });
+                return Some(HitRecord {
+                    t: temp,
+                    p: hit_point,
+                    normal: (hit_point - self.center) / self.radius,
+                    material: self.material,
+                });
             } 
         } 
         None
