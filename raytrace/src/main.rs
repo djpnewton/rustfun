@@ -2,18 +2,22 @@ use std::f32;
 
 extern crate minifb;
 use minifb::{Key, WindowOptions, Window};
+use rand::prelude::*;
 
 mod vec3;
 mod ray;
 mod hitable;
+mod camera;
 use crate::{
     vec3::{Vec3},
     ray::{Ray},
     hitable::{Sphere, World},
+    camera::{Camera},
 };
 
 const WIDTH: usize = 640;
 const HEIGHT: usize = 320;
+const SAMPLES: usize = 100;
 
 fn color(ray: Ray, world: &World) -> Vec3 {
     if let Some(hit) = world.hit(ray, 0.0, f32::MAX) {
@@ -35,35 +39,38 @@ fn main() {
         panic!("{}", e);
     });
 
-    let lower_left_corner = Vec3::new(-2.0, -1.0, -1.0);
-    let horizontal = Vec3::new(4.0, 0.0, 0.0);
-    let vertical = Vec3::new(0.0, 2.0, 0.0);
-    let origin = Vec3::zeros();
+    let camera = Camera::new();
     let world = World::new(vec![
         Sphere::new(Vec3::new(0.0, 0.0, -1.0), 0.5),
         Sphere::new(Vec3::new(0.0, -100.5, -1.0), 100.0),
     ]);
+    let mut rng = rand::thread_rng();
     while window.is_open() && !window.is_key_down(Key::Escape) {
         let mut c = 0;
-        for i in buffer.iter_mut() {
+        for pixel in buffer.iter_mut() {
             // calc x and y pixel
             let px = c % WIDTH;
             let py = HEIGHT - c / WIDTH;
-            // make ray
-            let u = px as f32 / WIDTH as f32;
-            let v = py as f32 / HEIGHT as f32;
-            let ray = Ray::new(origin, lower_left_corner + horizontal * u + vertical * v);
-            // calc color
-            let col = color(ray, &world);
+            // make color
+            let mut col = Vec3::new(0.0, 0.0, 0.0);
+            for _n in 1..=SAMPLES {
+                // calc color for this sample
+                let u = (px as f32 + rng.gen::<f32>()) / WIDTH as f32;
+                let v = (py as f32 + rng.gen::<f32>()) / HEIGHT as f32;
+                let ray = camera.get_ray(u, v);
+                let col_temp = color(ray, &world); 
+                col = col + col_temp; // add all color values together
+            }
+            col = col / SAMPLES as f32; // get average of color values
             // convert to u8
-            let r = (255.0 * col.x) as u32;
-            let g = (255.0 * col.y) as u32;
-            let b = (255.0 * col.z) as u32;
+            let r = (255.99 * col.x) as u32;
+            let g = (255.99 * col.y) as u32;
+            let b = (255.99 * col.z) as u32;
             // set pixel
-            *i = 0;
-            *i |= r << 16;
-            *i |= g << 8;
-            *i |= b;
+            *pixel = 0;
+            *pixel |= r << 16;
+            *pixel |= g << 8;
+            *pixel |= b;
             // increment counter
             c += 1;
         }
@@ -71,6 +78,6 @@ fn main() {
         // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
         window.update_with_buffer(&buffer).unwrap();
 
-        Vec3::new(0.0, 1.0, 2.0);
+        println!("ok");
     }
 }
