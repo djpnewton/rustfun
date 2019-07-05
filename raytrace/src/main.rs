@@ -51,13 +51,14 @@ fn main() {
         panic!("{}", e);
     });
 
-    let camera = Camera::new();
+    let camera = Camera::new(Vec3::new(-2.0, 2.0, 1.0), Vec3::new(0.0, 0.0, -1.0), Vec3::new(0.0, 1.0, 0.0), 45.0, WIDTH as f32 / HEIGHT as f32);
     let world = World::new(vec![
         Sphere::new(Vec3::new(0.0, 0.0, -1.0), 0.5, Material::lambertian(Vec3::new(0.1, 0.2, 0.5))),
         Sphere::new(Vec3::new(0.0, -100.5, -1.0), 100.0, Material::lambertian(Vec3::new(0.8, 0.8, 0.0))),
         Sphere::new(Vec3::new(1.0, 0.0, -1.0), 0.5, Material::metal(Vec3::new(0.8, 0.6, 0.2), 0.1)),
         Sphere::new(Vec3::new(-1.0, 0.0, -1.0), 0.5, Material::dielectric(1.5)),
         Sphere::new(Vec3::new(-1.0, 0.0, -1.0), -0.45, Material::dielectric(1.5)),
+        Sphere::new(Vec3::new(-1.0, 0.0, -1.5), 0.25, Material::metal(Vec3::new(0.5, 0.5, 0.5), 0.0)),
     ]);
     let mut rng = rand::thread_rng();
     while window.is_open() && !window.is_key_down(Key::Escape) {
