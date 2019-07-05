@@ -53,10 +53,11 @@ fn main() {
 
     let camera = Camera::new();
     let world = World::new(vec![
-        Sphere::new(Vec3::new(0.0, 0.0, -1.0), 0.5, Material::lambertian(Vec3::new(0.8, 0.3, 0.3))),
+        Sphere::new(Vec3::new(0.0, 0.0, -1.0), 0.5, Material::lambertian(Vec3::new(0.1, 0.2, 0.5))),
         Sphere::new(Vec3::new(0.0, -100.5, -1.0), 100.0, Material::lambertian(Vec3::new(0.8, 0.8, 0.0))),
-        Sphere::new(Vec3::new(1.0, 0.0, -1.0), 0.5, Material::metal(Vec3::new(0.8, 0.6, 0.2), 0.8)),
-        Sphere::new(Vec3::new(-1.0, 0.0, -1.0), 0.5, Material::metal(Vec3::new(0.8, 0.8, 0.8), 0.1)),
+        Sphere::new(Vec3::new(1.0, 0.0, -1.0), 0.5, Material::metal(Vec3::new(0.8, 0.6, 0.2), 0.1)),
+        Sphere::new(Vec3::new(-1.0, 0.0, -1.0), 0.5, Material::dielectric(1.5)),
+        Sphere::new(Vec3::new(-1.0, 0.0, -1.0), -0.45, Material::dielectric(1.5)),
     ]);
     let mut rng = rand::thread_rng();
     while window.is_open() && !window.is_key_down(Key::Escape) {
@@ -89,6 +90,9 @@ fn main() {
             *pixel |= b;
             // increment counter
             c += 1;
+            if c % (WIDTH * HEIGHT / 10) == 0 {
+                println!("{}px ({}%)", c, (c * 100) / (WIDTH * HEIGHT));
+            }
         }
 
         // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
