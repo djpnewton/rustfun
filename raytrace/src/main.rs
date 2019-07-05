@@ -51,7 +51,11 @@ fn main() {
         panic!("{}", e);
     });
 
-    let camera = Camera::new(Vec3::new(-2.0, 2.0, 1.0), Vec3::new(0.0, 0.0, -1.0), Vec3::new(0.0, 1.0, 0.0), 45.0, WIDTH as f32 / HEIGHT as f32);
+    let look_from = Vec3::new(3.0, 3.0, 2.0);
+    let look_to = Vec3::new(0.0, 0.0, -1.0);
+    let dist_to_focus = (look_from - look_to).length();
+    let aperture = 2.0;
+    let camera = Camera::new(look_from, look_to, Vec3::new(0.0, 1.0, 0.0), 20.0, WIDTH as f32 / HEIGHT as f32, aperture, dist_to_focus);
     let world = World::new(vec![
         Sphere::new(Vec3::new(0.0, 0.0, -1.0), 0.5, Material::lambertian(Vec3::new(0.1, 0.2, 0.5))),
         Sphere::new(Vec3::new(0.0, -100.5, -1.0), 100.0, Material::lambertian(Vec3::new(0.8, 0.8, 0.0))),
@@ -73,7 +77,7 @@ fn main() {
                 // calc color for this sample
                 let u = (px as f32 + rng.gen::<f32>()) / WIDTH as f32;
                 let v = (py as f32 + rng.gen::<f32>()) / HEIGHT as f32;
-                let ray = camera.get_ray(u, v);
+                let ray = camera.get_ray(u, v, &mut rng);
                 let col_temp = color(ray, &world, 0, &mut rng); 
                 col = col + col_temp; // add all color values together
             }
